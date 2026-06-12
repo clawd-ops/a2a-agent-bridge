@@ -31,6 +31,13 @@ def _card_url(agent_url: str | None = None) -> str:
     return f"{_target_url(agent_url)}{WELL_KNOWN_AGENT_CARD}"
 
 
+def _bridge_headers() -> dict[str, str]:
+    token = os.environ.get("A2A_BRIDGE_TOKEN", "").strip()
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
 async def _post_jsonrpc(agent_url: str | None, payload: dict[str, Any]) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(_rpc_url(agent_url), json=payload)
@@ -41,6 +48,31 @@ async def _post_jsonrpc(agent_url: str | None, payload: dict[str, Any]) -> dict[
         raise RuntimeError(f"A2A JSON-RPC error: {data['error']}")
 
     return data
+
+
+async def _get_bridge_json(agent_url: str | None, path: str) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{_target_url(agent_url)}{path}",
+            headers=_bridge_headers(),
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def _post_bridge_json(
+    agent_url: str | None,
+    path: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{_target_url(agent_url)}{path}",
+            json=payload,
+            headers=_bridge_headers(),
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 @mcp.tool()
@@ -96,6 +128,39 @@ async def send_a2a_message(
         "params": params,
     }
     return await _post_jsonrpc(agent_url, payload)
+
+
+@mcp.tool()
+async def poll_inbox(
+    agent: str = "clawd",
+    agent_url: str | None = None,
+    include_acked: bool = False,
+) -> dict[str, Any]:
+    """Poll the bridge's ephemeral inbox for an agent.
+
+    Args:
+        agent: Agent inbox name to read, for example "clawd" or "codex".
+        agent_url: Optional A2A agent base URL. Defaults to A2A_AGENT_URL.
+        include_acked: Include already acknowledged messages.
+    """
+    suffix = "?includeAcked=true" if include_acked else ""
+    return await _get_bridge_json(agent_url, f"/bridge/inbox/{agent}{suffix}")
+
+
+@mcp.tool()
+async def ack_inbox(
+    ids: list[str],
+    agent: str = "clawd",
+    agent_url: str | None = None,
+) -> dict[str, Any]:
+    """Acknowledge messages from the bridge's ephemeral inbox.
+
+    Args:
+        ids: Inbox message IDs to mark acknowledged.
+        agent: Agent inbox name, for example "clawd" or "codex".
+        agent_url: Optional A2A agent base URL. Defaults to A2A_AGENT_URL.
+    """
+    return await _post_bridge_json(agent_url, f"/bridge/inbox/{agent}/ack", {"ids": ids})
 
 
 @mcp.tool()

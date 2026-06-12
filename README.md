@@ -31,6 +31,12 @@ Endpoints:
 - `GET /healthz`
 - `GET /.well-known/agent-card.json`
 - `POST /` for A2A JSON-RPC
+- `GET /bridge/inbox/{agent}` for ephemeral inbox polling
+- `POST /bridge/inbox/{agent}/ack` for inbox acknowledgements
+
+Inbox endpoints are in-memory and intentionally non-durable. Set
+`A2A_BRIDGE_TOKEN` to require either `Authorization: Bearer <token>` or
+`X-A2A-Bridge-Token: <token>` for inbox polling/acknowledgement.
 
 ## MCP Bridge
 
@@ -42,6 +48,7 @@ uv run a2a-mcp-bridge
 ```
 
 Set `A2A_AGENT_URL` to point at the target A2A server.
+Set `A2A_BRIDGE_TOKEN` when polling protected inbox endpoints.
 
 ## Home Ops
 

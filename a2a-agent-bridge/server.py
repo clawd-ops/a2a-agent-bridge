@@ -1,3 +1,4 @@
+import logging
 import os
 
 import uvicorn
@@ -11,6 +12,9 @@ from a2a.utils import get_message_text, new_agent_text_message
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
+logger = logging.getLogger("a2a-agent-bridge")
 
 AGENT_NAME = os.environ.get("A2A_AGENT_NAME", "Home Ops Agent Bridge")
 BASE_URL = os.environ.get(
@@ -35,6 +39,13 @@ class HomeOpsAgentExecutor(AgentExecutor):
             request_text = get_message_text(context.message).strip()
         except Exception:
             request_text = ""
+
+        logger.info(
+            "received_a2a_message task_id=%s context_id=%s text=%r",
+            context.task_id,
+            context.context_id,
+            request_text,
+        )
 
         response = (
             "A2A message received by Home Ops Agent Bridge.\n\n"

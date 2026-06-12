@@ -28,6 +28,8 @@ BASE_URL = os.environ.get(
 ).rstrip("/")
 BRIDGE_TOKEN = os.environ.get("A2A_BRIDGE_TOKEN", "")
 MAX_INBOX_MESSAGES = int(os.environ.get("A2A_MAX_INBOX_MESSAGES", "500"))
+MAX_TOTAL_INBOX_MESSAGES = int(os.environ.get("A2A_MAX_TOTAL_INBOX_MESSAGES", "1000"))
+MAX_MESSAGE_CHARS = int(os.environ.get("A2A_MAX_MESSAGE_CHARS", "20000"))
 
 INBOX: dict[str, list[dict[str, Any]]] = {}
 
@@ -63,6 +65,37 @@ def _infer_handoff_agent(text: str, label: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _bounded_text(text: str) -> str:
+    if len(text) <= MAX_MESSAGE_CHARS:
+        return text
+    omitted = len(text) - MAX_MESSAGE_CHARS
+    return f"{text[:MAX_MESSAGE_CHARS]}\n\n[truncated {omitted} chars]"
+
+
+def _prune_total_inbox() -> None:
+    messages = [
+        (message["receivedAt"], agent, message["id"])
+        for agent, inbox in INBOX.items()
+        for message in inbox
+    ]
+    overflow = len(messages) - MAX_TOTAL_INBOX_MESSAGES
+    if overflow <= 0:
+        return
+
+    remove_ids = {
+        message_id
+        for _received_at, _agent, message_id in sorted(messages)[:overflow]
+    }
+    empty_agents: list[str] = []
+    for agent, inbox in INBOX.items():
+        INBOX[agent] = [message for message in inbox if message["id"] not in remove_ids]
+        if not INBOX[agent]:
+            empty_agents.append(agent)
+
+    for agent in empty_agents:
+        del INBOX[agent]
+
+
 def _capture_message(
     *,
     task_id: str,
@@ -70,6 +103,7 @@ def _capture_message(
     text: str,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    text = _bounded_text(text)
     to_agent = _metadata_value(metadata, "toAgent", "to_agent", "to")
     from_agent = _metadata_value(metadata, "fromAgent", "from_agent", "from")
     to_agent = to_agent or _infer_handoff_agent(text, "Handoff to") or "default"
@@ -91,6 +125,7 @@ def _capture_message(
     messages.append(item)
     if len(messages) > MAX_INBOX_MESSAGES:
         del messages[: len(messages) - MAX_INBOX_MESSAGES]
+    _prune_total_inbox()
 
     return item
 
